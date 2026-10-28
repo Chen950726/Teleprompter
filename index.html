@@ -1,0 +1,553 @@
+<title>跟唸提詞機</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@500&family=Noto+Sans+TC:wght@400;500;700&display=swap">
+<style>
+/* Layout: 編輯頁（講稿＋設定，底部固定開始鈕）→ 全螢幕閱讀頁（頂列、捲動講稿、讀句標記、底部控制列） */
+:root{
+  --bg:#101318; --surface:#171b22; --surface-2:#212631; --line:#2c333f;
+  --fg:#f1eee7; --fg-dim:#9aa2af;
+  --text-done:#4b5261; --text-next:#c8ccd4; --text-now:#ffffff; --now-bg:rgba(255,255,255,.1); --band:rgba(255,255,255,.05);
+  --accent:#ff6b5e; --accent-ink:#1d0b09;
+  --font-ui:"Noto Sans TC","PingFang TC","Microsoft JhengHei",system-ui,sans-serif;
+  --font-mono:"JetBrains Mono",ui-monospace,Menlo,Consolas,monospace;
+  --fs:34px;
+  color-scheme:dark;
+}
+@media (prefers-color-scheme: light){
+  :root:not([data-theme="dark"]){
+    --bg:#f3f4f7; --surface:#ffffff; --surface-2:#e8ebf0; --line:#d3d8e0;
+    --fg:#14171d; --fg-dim:#5b6471;
+    --text-done:#b3b9c4; --text-next:#454c5a; --text-now:#000000; --now-bg:rgba(0,0,0,.07); --band:rgba(0,0,0,.045);
+    --accent:#e0412f; --accent-ink:#ffffff;
+    color-scheme:light;
+  }
+}
+:root[data-theme="light"]{
+  --bg:#f3f4f7; --surface:#ffffff; --surface-2:#e8ebf0; --line:#d3d8e0;
+  --fg:#14171d; --fg-dim:#5b6471;
+  --text-done:#b3b9c4; --text-next:#454c5a; --text-now:#000000; --now-bg:rgba(0,0,0,.07); --band:rgba(0,0,0,.045);
+  --accent:#e0412f; --accent-ink:#ffffff;
+  color-scheme:light;
+}
+*{box-sizing:border-box}
+body{
+  background:var(--bg); color:var(--fg); font:16px/1.55 var(--font-ui);
+  padding-block:20px 0;
+  padding-left:max(16px,env(safe-area-inset-left,0px));
+  padding-right:max(16px,env(safe-area-inset-right,0px));
+  -webkit-text-size-adjust:100%;
+}
+button{font:inherit;color:inherit;cursor:pointer;-webkit-tap-highlight-color:transparent}
+button:focus-visible,select:focus-visible,textarea:focus-visible,input[type=range]:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+
+/* ---------- 編輯頁 ---------- */
+#editor{max-width:560px;margin:0 auto;display:flex;flex-direction:column;gap:20px}
+.head h1{margin:0;font-size:26px;line-height:1.2;font-weight:700;letter-spacing:.02em}
+.head p{margin:6px 0 0;color:var(--fg-dim);font-size:15px}
+.field{display:flex;flex-direction:column;gap:8px}
+.lbl{font-size:13px;letter-spacing:.08em;color:var(--fg-dim);font-weight:500}
+#draft{
+  width:100%;min-height:220px;resize:vertical;padding:14px;border-radius:14px;
+  background:var(--surface);color:var(--fg);border:1px solid var(--line);
+  font:inherit;font-size:17px;line-height:1.7;
+}
+.meta{display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap;font-size:13px;color:var(--fg-dim)}
+.meta b{font-family:var(--font-mono);font-weight:500;color:var(--fg)}
+.panel{background:var(--surface);border:1px solid var(--line);border-radius:16px;padding:16px;display:flex;flex-direction:column;gap:18px}
+.row{display:flex;flex-direction:column;gap:10px;min-width:0}
+.row .top{display:flex;justify-content:space-between;align-items:baseline;gap:12px}
+.row .val{font-family:var(--font-mono);font-size:14px}
+.anchorrow{display:flex;gap:14px;align-items:stretch}
+.anchorrow .seg{flex:1}
+.phone{
+  width:46px;height:80px;flex:none;border:2px solid var(--line);border-radius:10px;position:relative;
+  background:repeating-linear-gradient(to bottom,transparent 0 9px,var(--surface-2) 9px 12px);
+}
+.phone i{position:absolute;left:5px;right:5px;height:8px;border-radius:4px;background:var(--accent);top:var(--y,20%);margin-top:-4px;transition:top .2s}
+.phone[data-anchor="top"]{--y:11%}
+.phone[data-anchor="center"]{--y:50%}
+.seg{position:relative;display:grid;grid-auto-flow:column;grid-auto-columns:1fr;gap:3px;padding:3px;border-radius:12px;background:var(--surface-2)}
+.seg input{position:absolute;opacity:0;pointer-events:none}
+.seg label{display:flex;align-items:center;justify-content:center;min-height:46px;padding:0 8px;border-radius:9px;font-size:15px;color:var(--fg-dim);cursor:pointer;text-align:center}
+.seg input:checked+label{background:var(--bg);color:var(--fg);font-weight:700;box-shadow:0 0 0 1px var(--line)}
+.seg input:focus-visible+label{outline:2px solid var(--accent);outline-offset:2px}
+input[type=range]{width:100%;accent-color:var(--accent);height:32px;margin:0}
+select{width:100%;min-height:46px;padding:0 12px;border-radius:12px;background:var(--surface-2);color:var(--fg);border:1px solid var(--line);font:inherit;font-size:15px}
+.note{margin:0;font-size:13px;color:var(--fg-dim)}
+.startbar{
+  position:sticky;bottom:0;margin-inline:-16px;padding:12px 16px calc(14px + env(safe-area-inset-bottom,0px));
+  background:linear-gradient(to bottom,transparent,var(--bg) 28%);
+  display:flex;flex-direction:column;gap:8px;
+}
+#start{
+  min-height:56px;border:0;border-radius:16px;background:var(--accent);color:var(--accent-ink);
+  font-size:18px;font-weight:700;letter-spacing:.06em;display:flex;align-items:center;justify-content:center;gap:10px;
+}
+#start svg{width:20px;height:20px;fill:currentColor}
+
+/* ---------- 閱讀頁 ---------- */
+#reader{
+  position:fixed;inset:0;z-index:20;background:var(--bg);display:flex;flex-direction:column;
+  padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px);
+}
+.hud{display:flex;align-items:center;gap:8px;padding:6px max(12px,env(safe-area-inset-right,0px)) 6px max(12px,env(safe-area-inset-left,0px))}
+.hud .state{flex:1;min-width:0;display:flex;align-items:center;gap:8px;font-size:14px;color:var(--fg-dim)}
+.hud .state span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0}
+.dot{width:10px;height:10px;border-radius:50%;background:var(--line);flex:none}
+.dot.live{background:var(--accent);animation:tally 1.4s ease-in-out infinite}
+@keyframes tally{50%{opacity:.35}}
+@media (prefers-reduced-motion:reduce){.dot.live{animation:none}.phone i{transition:none}}
+#clock{font-family:var(--font-mono);font-size:15px;min-width:52px;text-align:right}
+.ibtn{min-width:44px;height:44px;padding:0 10px;border-radius:12px;border:0;background:var(--surface-2);display:inline-flex;align-items:center;justify-content:center;gap:6px;font-size:15px}
+.ibtn svg{width:22px;height:22px}
+.ibtn svg.st{fill:none;stroke:currentColor;stroke-width:2.2;stroke-linecap:round;stroke-linejoin:round}
+.prog{height:3px;background:var(--surface-2)}
+.prog i{display:block;height:100%;width:0;background:var(--accent)}
+.stagewrap{position:relative;flex:1;min-height:0;overflow:hidden}
+#band{position:absolute;left:0;right:0;background:var(--band);pointer-events:none;z-index:0}
+#tri{position:absolute;left:max(4px,env(safe-area-inset-left,0px));width:0;height:0;border-style:solid;border-width:8px 0 8px 12px;border-color:transparent transparent transparent var(--accent);pointer-events:none;z-index:2;margin-top:-8px}
+#stage{
+  position:absolute;inset:0;z-index:1;overflow-y:auto;-webkit-overflow-scrolling:touch;overscroll-behavior:contain;
+  padding-left:max(30px,env(safe-area-inset-left,0px));padding-right:max(20px,env(safe-area-inset-right,0px));
+  scrollbar-width:none;
+}
+#stage::-webkit-scrollbar{display:none}
+#lines{font-size:var(--fs);line-height:1.75;font-weight:500;overflow-wrap:anywhere}
+#lines.mirror{transform:scaleX(-1)}
+.para{margin:0 0 .8em}
+.p{color:var(--text-next);transition:color .25s;border-radius:.2em;-webkit-box-decoration-break:clone;box-decoration-break:clone}
+.p.done{color:var(--text-done)}
+.p.now{color:var(--text-now);background:var(--now-bg)}
+.rbar{
+  display:flex;align-items:center;justify-content:center;gap:8px;
+  padding:10px max(12px,env(safe-area-inset-right,0px)) 12px max(12px,env(safe-area-inset-left,0px));
+  background:var(--surface);border-top:1px solid var(--line);
+}
+#main{width:60px;height:60px;border-radius:50%;border:0;background:var(--accent);color:var(--accent-ink);display:grid;place-items:center;margin-inline:6px}
+#main svg{width:28px;height:28px}
+#main svg.fill{fill:currentColor}
+#count,#toast{position:absolute;z-index:5}
+#count{inset:0;display:grid;place-items:center;background:var(--bg);font-family:var(--font-mono);font-size:min(36vw,160px);color:var(--text-now)}
+#toast{left:50%;top:12px;transform:translateX(-50%);max-width:calc(100% - 32px);padding:10px 16px;border-radius:12px;background:var(--surface-2);border:1px solid var(--line);font-size:14px;text-align:center}
+</style>
+
+<main id="editor">
+  <div class="head">
+    <h1>跟唸提詞機</h1>
+    <p>貼上講稿，開口唸，畫面會跟著你唸到的那句往下走。</p>
+  </div>
+
+  <div class="field">
+    <label class="lbl" for="draft">講稿（目前是範例，直接換成你的內容）</label>
+    <textarea id="draft" spellcheck="false"></textarea>
+    <div class="meta"><span>共 <b id="nChars">0</b> 字</span><span>約 <b id="nTime">0:00</b>（以每秒 <b id="nSpeed">4</b> 字估算）</span></div>
+  </div>
+
+  <div class="panel">
+    <div class="row">
+      <span class="lbl">目前念到的那句，放在螢幕</span>
+      <div class="anchorrow">
+        <div class="phone" id="phoneprev" data-anchor="top" aria-hidden="true"><i></i></div>
+        <div class="seg" role="radiogroup" aria-label="念到的那句的位置">
+          <input type="radio" name="anchor" id="a-top" value="top"><label for="a-top">上方</label>
+          <input type="radio" name="anchor" id="a-center" value="center"><label for="a-center">中間</label>
+        </div>
+      </div>
+    </div>
+
+    <div class="row">
+      <span class="lbl">追隨方式</span>
+      <div class="seg" role="radiogroup" aria-label="追隨方式">
+        <input type="radio" name="mode" id="m-voice" value="voice"><label for="m-voice">語音跟隨</label>
+        <input type="radio" name="mode" id="m-auto" value="auto"><label for="m-auto">自動捲動</label>
+      </div>
+    </div>
+
+    <div class="row" id="langrow">
+      <label class="lbl" for="lang">語音辨識語言</label>
+      <select id="lang">
+        <option value="zh-TW">國語（台灣）</option>
+        <option value="en-US">English (US)</option>
+        <option value="ja-JP">日本語</option>
+      </select>
+    </div>
+
+    <div class="row" id="speedrow" hidden>
+      <div class="top"><label class="lbl" for="speed">捲動速度（字／秒）</label><span class="val" id="speedVal">4</span></div>
+      <input type="range" id="speed" min="1" max="12" step="0.5">
+    </div>
+
+    <div class="row">
+      <div class="top"><label class="lbl" for="size">字體大小</label><span class="val" id="sizeVal">34</span></div>
+      <input type="range" id="size" min="22" max="64" step="2">
+    </div>
+
+    <div class="row">
+      <span class="lbl">鏡像（搭配分光鏡使用）</span>
+      <div class="seg" role="radiogroup" aria-label="鏡像">
+        <input type="radio" name="mirror" id="mi-off" value="false"><label for="mi-off">關</label>
+        <input type="radio" name="mirror" id="mi-on" value="true"><label for="mi-on">開</label>
+      </div>
+    </div>
+  </div>
+
+  <div class="startbar">
+    <button id="start" type="button"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5v14l11-7z"/></svg>開始提詞</button>
+    <p class="note" style="text-align:center">語音跟隨需要麥克風權限。無法使用時，會自動改成依語速捲動。</p>
+  </div>
+</main>
+
+<section id="reader" hidden aria-label="提詞畫面">
+  <div class="hud">
+    <button class="ibtn" id="back" type="button" aria-label="回到編輯"><svg class="st" viewBox="0 0 24 24"><path d="M15 5l-7 7 7 7"/></svg>編輯</button>
+    <div class="state"><i class="dot" id="dot"></i><span id="stateTxt">語音跟隨</span></div>
+    <button class="ibtn" id="slower" type="button" aria-label="捲動變慢" hidden>−</button>
+    <button class="ibtn" id="faster" type="button" aria-label="捲動變快" hidden>＋</button>
+    <span id="clock">0:00</span>
+  </div>
+  <div class="prog"><i id="progBar"></i></div>
+  <div class="stagewrap">
+    <div id="band"></div>
+    <div id="tri"></div>
+    <div id="stage"><div id="lines"></div></div>
+    <div id="count" hidden></div>
+    <div id="toast" hidden></div>
+  </div>
+  <div class="rbar">
+    <button class="ibtn" id="restart" type="button" aria-label="從頭開始"><svg class="st" viewBox="0 0 24 24"><path d="M5 12a7 7 0 1 0 2.1-5"/><path d="M5 4v4h4"/></svg></button>
+    <button class="ibtn" id="smaller" type="button" aria-label="字體縮小">A−</button>
+    <button class="ibtn" id="bigger" type="button" aria-label="字體放大">A＋</button>
+    <button class="ibtn" id="anchorBtn" type="button" aria-label="切換念到的那句的位置">上方</button>
+    <button id="main" type="button" aria-label="暫停"></button>
+  </div>
+</section>
+
+<script>
+(()=>{
+//#core-start
+const CJK_NUM={'〇':'0','零':'0','一':'1','二':'2','三':'3','四':'4','五':'5','六':'6','七':'7','八':'8','九':'9'};
+function norm(s){
+  let o='';
+  for(const ch of String(s).toLowerCase()){
+    if(/[\p{L}\p{N}]/u.test(ch))o+=(CJK_NUM[ch]!==undefined?CJK_NUM[ch]:ch);
+  }
+  return o;
+}
+const BREAK='。！？；，、：…!?;,:';
+function splitParas(t){
+  return t.split(/\n+/).map(p=>p.trim()).filter(Boolean).map(p=>{
+    const cs=[...p],out=[];let cur='';
+    for(let i=0;i<cs.length;i++){
+      const c=cs[i],n=cs[i+1];
+      cur+=c;
+      const brk=BREAK.includes(c)||(c==='.'&&(n===undefined||/\s/.test(n)));
+      const nextBrk=n!==undefined&&(BREAK.includes(n)||n==='.');
+      if(brk&&!nextBrk){out.push(cur);cur='';}
+    }
+    if(cur.trim())out.push(cur);
+    return out;
+  });
+}
+/* 把辨識到的句尾，和講稿目前位置附近比對；回傳新的字元位置，找不到就回傳 -1 */
+function matchPos(flat,pos,tr){
+  const t=norm(tr);
+  if(t.length<3)return -1;
+  const L=Math.min(t.length,10),tail=t.slice(-L);
+  const lo=Math.max(L,Math.floor(pos)-40),hi=Math.min(flat.length,Math.floor(pos)+90);
+  let best=-1,bs=-1,bm=0;
+  for(let e=lo;e<=hi;e++){
+    let m=0;
+    for(let k=0;k<L;k++)if(flat[e-L+k]===tail[k])m++;
+    const sc=m/L-Math.abs(e-pos)/1500;
+    if(sc>bs){bs=sc;best=e;bm=m;}
+  }
+  if(best<0)return -1;
+  const r=bm/L;
+  if(bm<Math.min(L,4)||r<0.6)return -1;
+  if(best<pos-3&&r<0.8)return -1;
+  return best;
+}
+//#core-end
+
+const $=s=>document.querySelector(s);
+const KEY='teleprompter-v1';
+const SAMPLE='大家好，歡迎來到今天的影片。這支影片，我想跟大家分享三個提升表達力的小技巧。\n第一，先把重點寫成短句，每一句只講一件事。\n第二，念稿的時候眼睛看鏡頭，聲音放慢一點。\n第三，每一段之間停頓一下，讓觀眾有時間消化。\n這個提詞機會跟著你的聲音往下走，你只要自然地說就好。如果念到一半想重來，直接回頭念前一句，畫面也會跟著回去。\n好，我們開始吧。';
+let S={size:34,anchor:'top',mode:'voice',speed:4,mirror:false,lang:'zh-TW'};
+let text=SAMPLE;
+try{
+  const j=JSON.parse(localStorage.getItem(KEY)||'null');
+  if(j){if(typeof j.text==='string'&&j.text.trim())text=j.text;if(j.S)Object.assign(S,j.S);}
+}catch(e){}
+const save=()=>{try{localStorage.setItem(KEY,JSON.stringify({text,S}));}catch(e){}};
+
+const draft=$('#draft'),editor=$('#editor'),reader=$('#reader'),stage=$('#stage'),lines=$('#lines');
+const band=$('#band'),tri=$('#tri'),dot=$('#dot'),stateTxt=$('#stateTxt'),clockEl=$('#clock');
+const progBar=$('#progBar'),mainBtn=$('#main'),toastEl=$('#toast'),countEl=$('#count');
+const I_PAUSE='<svg class="fill" viewBox="0 0 24 24" aria-hidden="true"><path d="M7 5h4v14H7zM13 5h4v14h-4z"/></svg>';
+const I_PLAY='<svg class="fill" viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5v14l11-7z"/></svg>';
+const fmt=s=>Math.floor(s/60)+':'+String(s%60).padStart(2,'0');
+
+/* ---------- 編輯頁 ---------- */
+function updateMeta(){
+  const n=norm(draft.value).length;
+  $('#nChars').textContent=n;
+  $('#nTime').textContent=fmt(Math.round(n/S.speed));
+}
+function syncControls(){
+  document.querySelectorAll('input[type=radio]').forEach(r=>{r.checked=String(S[r.name])===r.value;});
+  $('#lang').value=S.lang;
+  $('#speed').value=S.speed;$('#speedVal').textContent=S.speed;
+  $('#size').value=S.size;$('#sizeVal').textContent=S.size;
+  $('#phoneprev').dataset.anchor=S.anchor;
+  $('#speedrow').hidden=S.mode!=='auto';
+  $('#langrow').hidden=S.mode!=='voice';
+  $('#nSpeed').textContent=S.speed;
+  $('#anchorBtn').textContent=S.anchor==='top'?'上方':'中間';
+  document.documentElement.style.setProperty('--fs',S.size+'px');
+  lines.classList.toggle('mirror',S.mirror);
+  updateMeta();
+}
+document.querySelectorAll('input[type=radio]').forEach(r=>r.addEventListener('change',()=>{
+  if(!r.checked)return;
+  S[r.name]=r.name==='mirror'?r.value==='true':r.value;
+  save();syncControls();
+  if(!reader.hidden)layout();
+}));
+$('#lang').addEventListener('change',e=>{S.lang=e.target.value;save();});
+$('#speed').addEventListener('input',e=>{S.speed=+e.target.value;save();syncControls();});
+$('#size').addEventListener('input',e=>{S.size=+e.target.value;save();syncControls();});
+draft.addEventListener('input',()=>{text=draft.value;save();updateMeta();});
+
+/* ---------- 閱讀頁狀態 ---------- */
+let state='idle',effMode='voice',pos=0,target=0,elapsed=0,cur=-1,last=0,raf=0;
+let userActive=false,moved=false,settleT=0,cdT=0,toastT=0,heard='',lastClock='';
+let spans=[],starts=[],ends=[],flat='';
+
+function build(){
+  const paras=splitParas(text);
+  lines.textContent='';spans=[];starts=[];ends=[];flat='';
+  for(const para of paras){
+    const d=document.createElement('div');d.className='para';
+    for(const ph of para){
+      const sp=document.createElement('span');
+      sp.className='p';sp.textContent=ph;sp.dataset.i=spans.length;
+      starts.push(flat.length);flat+=norm(ph);ends.push(flat.length);
+      spans.push(sp);d.appendChild(sp);
+    }
+    lines.appendChild(d);
+  }
+}
+function markCurrent(i){
+  cur=i;
+  for(let k=0;k<spans.length;k++){const c=spans[k].classList;c.toggle('done',k<i);c.toggle('now',k===i);}
+}
+function phraseAt(p){
+  let i=0;
+  for(let k=0;k<starts.length;k++){if(starts[k]<=p)i=k;else break;}
+  return i;
+}
+const anchorY=()=>{
+  const h=stage.clientHeight;
+  if(S.anchor!=='top')return h*0.5;
+  return Math.max(h*0.07,S.size*1.75*0.85);
+};
+function layout(){
+  const h=stage.clientHeight;if(!h)return;
+  lines.style.paddingTop=(h*0.5)+'px';
+  lines.style.paddingBottom=(h*0.8)+'px';
+  const ay=anchorY(),lh=S.size*1.75;
+  band.style.top=(ay-lh*0.8)+'px';band.style.height=(lh*1.6)+'px';
+  tri.style.top=ay+'px';
+}
+function scrollToPos(){
+  const el=spans[cur<0?0:cur];if(!el)return;
+  const rs=el.getClientRects();if(!rs.length)return;
+  const i=cur<0?0:cur,len=ends[i]-starts[i];
+  const f=len>0?Math.min(1,Math.max(0,(pos-starts[i])/len)):0;
+  const a=rs[0],b=rs[rs.length-1];
+  const base=stage.getBoundingClientRect().top-stage.scrollTop;
+  const y0=a.top+a.height/2-base,y1=b.top+b.height/2-base;
+  stage.scrollTop=y0+f*(y1-y0)-anchorY();
+}
+function toast(msg){
+  toastEl.textContent=msg;toastEl.hidden=false;
+  clearTimeout(toastT);toastT=setTimeout(()=>{toastEl.hidden=true;},4200);
+}
+function setMain(){
+  const on=state==='running'||state==='countdown';
+  mainBtn.innerHTML=on?I_PAUSE:I_PLAY;
+  mainBtn.setAttribute('aria-label',on?'暫停':(state==='done'?'從頭開始':'繼續'));
+}
+function paintState(){
+  dot.classList.toggle('live',effMode==='voice'&&rec!==null&&state==='running');
+  let t;
+  if(state==='paused')t='已暫停';
+  else if(state==='done')t='講稿唸完了';
+  else if(effMode==='auto')t='自動捲動　'+S.speed+' 字/秒';
+  else t=heard?'聽到：'+heard:'聽你開口…';
+  stateTxt.textContent=t;
+  const auto=effMode==='auto'&&state!=='idle';
+  $('#slower').hidden=!auto;$('#faster').hidden=!auto;
+}
+
+/* ---------- 語音跟隨 ---------- */
+let rec=null;
+function follow(tr){
+  const p=matchPos(flat,target,tr);
+  if(p>=0)target=p;
+}
+function startRec(){
+  const SR=window.SpeechRecognition||window.webkitSpeechRecognition;
+  if(!SR){fallback('這個瀏覽器不支援語音辨識，已改為依語速自動捲動');return;}
+  stopRec();
+  const r=new SR();
+  r.lang=S.lang;r.continuous=true;r.interimResults=true;
+  r.onresult=e=>{
+    let s='';
+    for(let i=0;i<e.results.length;i++)s+=e.results[i][0].transcript;
+    heard=s.slice(-14);follow(s);paintState();
+  };
+  r.onerror=e=>{
+    if(e.error==='not-allowed'||e.error==='service-not-allowed')fallback('麥克風無法使用，已改為依語速自動捲動');
+    else if(e.error==='audio-capture')fallback('找不到麥克風，已改為依語速自動捲動');
+    else if(e.error==='network')fallback('語音辨識需要網路，已改為依語速自動捲動');
+  };
+  r.onend=()=>{
+    if(rec!==r)return;
+    if(state==='running'||state==='countdown')setTimeout(()=>{if(rec===r){try{r.start();}catch(e){}}},200);
+  };
+  rec=r;
+  try{r.start();}catch(e){}
+  paintState();
+}
+function stopRec(){
+  const r=rec;rec=null;
+  if(r){r.onend=r.onresult=r.onerror=null;try{r.abort();}catch(e){}}
+}
+function fallback(msg){
+  stopRec();effMode='auto';
+  toast(msg);paintState();
+}
+
+/* ---------- 主迴圈 ---------- */
+function hud(){
+  const c=fmt(Math.floor(elapsed));
+  if(c!==lastClock){clockEl.textContent=c;lastClock=c;}
+  progBar.style.width=(flat.length?Math.min(100,pos/flat.length*100):0)+'%';
+}
+function frame(t){
+  raf=requestAnimationFrame(frame);
+  const dt=Math.min(0.1,(t-last)/1000);last=t;
+  if(state==='running'){
+    elapsed+=dt;
+    if(effMode==='auto')target=Math.min(flat.length,target+S.speed*dt);
+  }
+  pos+=(target-pos)*Math.min(1,dt*(effMode==='auto'?14:6));
+  const i=phraseAt(pos);
+  if(i!==cur)markCurrent(i);
+  if(!userActive)scrollToPos();
+  hud();
+  if(state==='running'&&target>=flat.length-0.01&&pos>=flat.length-0.6)finish();
+}
+function finish(){
+  state='done';stopRec();setMain();paintState();
+  toast('講稿唸完了，按下方按鈕可以重頭再來');
+}
+
+/* ---------- 操作 ---------- */
+let wl=null;
+function wake(){try{if(navigator.wakeLock)navigator.wakeLock.request('screen').then(l=>{wl=l;},()=>{});}catch(e){}}
+function unwake(){try{if(wl)wl.release();}catch(e){}wl=null;}
+function endCountdown(){clearInterval(cdT);countEl.hidden=true;}
+function runCountdown(n,done){
+  clearInterval(cdT);countEl.hidden=false;countEl.textContent=n;
+  cdT=setInterval(()=>{
+    n--;
+    if(n<=0){endCountdown();done();}else countEl.textContent=n;
+  },1000);
+}
+function start(){
+  text=draft.value;save();
+  build();
+  if(!flat.length){draft.placeholder='先貼上講稿再開始';draft.focus();return;}
+  effMode=S.mode;heard='';
+  editor.hidden=true;reader.hidden=false;
+  pos=target=0;elapsed=0;lastClock='';cur=-1;
+  markCurrent(0);layout();stage.scrollTop=0;
+  state='countdown';setMain();
+  if(effMode==='voice')startRec();
+  paintState();wake();
+  runCountdown(3,()=>{if(state==='countdown'){state='running';paintState();}});
+  cancelAnimationFrame(raf);last=performance.now();raf=requestAnimationFrame(frame);
+}
+function exit(){
+  state='idle';cancelAnimationFrame(raf);endCountdown();stopRec();unwake();
+  reader.hidden=true;editor.hidden=false;window.scrollTo(0,0);
+}
+function toggle(){
+  if(state==='running'){state='paused';stopRec();}
+  else if(state==='countdown'){endCountdown();state='paused';stopRec();}
+  else if(state==='paused'){state='running';if(effMode==='voice')startRec();}
+  else if(state==='done'){restart();return;}
+  else return;
+  setMain();paintState();
+}
+function restart(){
+  endCountdown();stopRec();
+  pos=target=0;elapsed=0;state='running';
+  if(effMode==='voice')startRec();
+  setMain();paintState();
+}
+function setSize(v){S.size=Math.max(22,Math.min(64,v));save();syncControls();layout();}
+function setSpeed(v){S.speed=Math.max(1,Math.min(12,v));save();syncControls();paintState();}
+
+$('#start').addEventListener('click',start);
+$('#back').addEventListener('click',exit);
+mainBtn.addEventListener('click',toggle);
+$('#restart').addEventListener('click',restart);
+$('#bigger').addEventListener('click',()=>setSize(S.size+2));
+$('#smaller').addEventListener('click',()=>setSize(S.size-2));
+$('#slower').addEventListener('click',()=>setSpeed(S.speed-0.5));
+$('#faster').addEventListener('click',()=>setSpeed(S.speed+0.5));
+$('#anchorBtn').addEventListener('click',()=>{S.anchor=S.anchor==='top'?'center':'top';save();syncControls();layout();});
+
+/* 手動滑動：停手後，把念到的位置改成目前停在標記線上的那句 */
+function settle(){
+  userActive=false;
+  if(!moved)return;
+  moved=false;
+  const ay=stage.getBoundingClientRect().top+anchorY();
+  let idx=0;
+  for(let k=0;k<spans.length;k++){
+    idx=k;
+    const rs=spans[k].getClientRects();
+    if(rs.length&&rs[rs.length-1].bottom>=ay)break;
+  }
+  target=pos=starts[idx];
+}
+function bump(){userActive=true;clearTimeout(settleT);settleT=setTimeout(settle,700);}
+['touchstart','touchmove','touchend','wheel'].forEach(n=>stage.addEventListener(n,bump,{passive:true}));
+stage.addEventListener('scroll',()=>{
+  if(userActive){moved=true;clearTimeout(settleT);settleT=setTimeout(settle,500);}
+},{passive:true});
+stage.addEventListener('click',e=>{
+  const sp=e.target.closest?e.target.closest('.p'):null;
+  if(!sp)return;
+  clearTimeout(settleT);userActive=false;moved=false;
+  target=starts[+sp.dataset.i];
+  if(state==='done'){state='running';if(effMode==='voice')startRec();setMain();paintState();}
+});
+addEventListener('resize',()=>{if(!reader.hidden)layout();});
+addEventListener('keydown',e=>{
+  if(reader.hidden)return;
+  if(e.code==='Space'){e.preventDefault();toggle();}
+  else if(e.key==='Escape')exit();
+});
+document.addEventListener('visibilitychange',()=>{if(document.hidden&&state==='running')toggle();});
+
+draft.value=text;
+syncControls();
+})();
+</script>
