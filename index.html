@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <style>:root{padding:env(safe-area-inset-top,0px) 0 env(safe-area-inset-bottom,0px)}body{margin:0}img{max-width:100%}[hidden]{display:none!important}</style>
-<title>跟唸提詞機</title>
+<title>超會念提詞機</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@500&family=Noto+Sans+TC:wght@400;500;700&display=swap">
@@ -14,7 +14,7 @@
   --bg:#101318; --surface:#171b22; --surface-2:#212631; --line:#2c333f;
   --fg:#f1eee7; --fg-dim:#9aa2af;
   --text-done:#4b5261; --text-next:#c8ccd4; --text-now:#ffffff; --now-bg:rgba(255,255,255,.1); --band:rgba(255,255,255,.05);
-  --accent:#ff6b5e; --accent-ink:#1d0b09;
+  --accent:#ff6b5e; --accent-ink:#1d0b09; --ok:#3ccf84; --warn:#f0b23a;
   --font-ui:"Noto Sans TC","PingFang TC","Microsoft JhengHei",system-ui,sans-serif;
   --font-mono:"JetBrains Mono",ui-monospace,Menlo,Consolas,monospace;
   --fs:34px;
@@ -25,7 +25,7 @@
     --bg:#f3f4f7; --surface:#ffffff; --surface-2:#e8ebf0; --line:#d3d8e0;
     --fg:#14171d; --fg-dim:#5b6471;
     --text-done:#b3b9c4; --text-next:#454c5a; --text-now:#000000; --now-bg:rgba(0,0,0,.07); --band:rgba(0,0,0,.045);
-    --accent:#e0412f; --accent-ink:#ffffff;
+    --accent:#e0412f; --accent-ink:#ffffff; --ok:#1f9d5a; --warn:#b97a00;
     color-scheme:light;
   }
 }
@@ -33,7 +33,7 @@
   --bg:#f3f4f7; --surface:#ffffff; --surface-2:#e8ebf0; --line:#d3d8e0;
   --fg:#14171d; --fg-dim:#5b6471;
   --text-done:#b3b9c4; --text-next:#454c5a; --text-now:#000000; --now-bg:rgba(0,0,0,.07); --band:rgba(0,0,0,.045);
-  --accent:#e0412f; --accent-ink:#ffffff;
+  --accent:#e0412f; --accent-ink:#ffffff; --ok:#1f9d5a; --warn:#b97a00;
   color-scheme:light;
 }
 *{box-sizing:border-box}
@@ -51,6 +51,11 @@ button:focus-visible,select:focus-visible,textarea:focus-visible,input[type=rang
 #editor{max-width:560px;margin:0 auto;display:flex;flex-direction:column;gap:20px}
 .head h1{margin:0;font-size:26px;line-height:1.2;font-weight:700;letter-spacing:.02em}
 .head p{margin:6px 0 0;color:var(--fg-dim);font-size:15px}
+.titlerow{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px 12px}
+.mic{display:inline-flex;align-items:center;gap:8px;min-height:36px;padding:0 12px;border-radius:999px;border:1px solid var(--line);background:var(--surface);color:var(--fg);font-size:13px}
+.mic[data-state="granted"] .dot{background:var(--ok)}
+.mic[data-state="prompt"] .dot{background:var(--warn)}
+.mic[data-state="denied"] .dot,.mic[data-state="embedded"] .dot,.mic[data-state="nosr"] .dot{background:var(--accent)}
 .ver{margin-left:10px;padding:2px 9px;border:1px solid var(--line);border-radius:999px;font-family:var(--font-mono);font-size:12px;font-weight:500;letter-spacing:0;color:var(--fg-dim);vertical-align:middle}
 .field{display:flex;flex-direction:column;gap:8px}
 .lbl{font-size:13px;letter-spacing:.08em;color:var(--fg-dim);font-weight:500}
@@ -59,6 +64,7 @@ button:focus-visible,select:focus-visible,textarea:focus-visible,input[type=rang
   background:var(--surface);color:var(--fg);border:1px solid var(--line);
   font:inherit;font-size:17px;line-height:1.7;
 }
+#draft::placeholder{color:var(--fg-dim);opacity:.85}
 .meta{display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap;font-size:13px;color:var(--fg-dim)}
 .meta b{font-family:var(--font-mono);font-weight:500;color:var(--fg)}
 .panel{background:var(--surface);border:1px solid var(--line);border-radius:16px;padding:16px;display:flex;flex-direction:column;gap:18px}
@@ -98,14 +104,15 @@ select{width:100%;min-height:46px;padding:0 12px;border-radius:12px;background:v
   position:fixed;inset:0;z-index:20;background:var(--bg);display:flex;flex-direction:column;
   padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px);
 }
-.hud{display:flex;align-items:center;gap:8px;padding:6px max(12px,env(safe-area-inset-right,0px)) 6px max(12px,env(safe-area-inset-left,0px))}
+.hud{display:flex;flex-wrap:wrap;align-items:center;gap:4px 8px;padding:6px max(12px,env(safe-area-inset-right,0px)) 6px max(12px,env(safe-area-inset-left,0px))}
 .hud .state{flex:1;min-width:0;display:flex;align-items:center;gap:8px;font-size:14px;color:var(--fg-dim)}
 .hud .state span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0}
 .dot{width:10px;height:10px;border-radius:50%;background:var(--line);flex:none}
 .dot.live{background:var(--accent);animation:tally 1.4s ease-in-out infinite}
 @keyframes tally{50%{opacity:.35}}
 @media (prefers-reduced-motion:reduce){.dot.live{animation:none}.phone i{transition:none}}
-#clock{font-family:var(--font-mono);font-size:15px;min-width:52px;text-align:right}
+#clock{font-family:var(--font-mono);font-size:15px;min-width:52px;text-align:right;margin-left:auto}
+.brk{flex-basis:100%;height:0}
 .ibtn{min-width:44px;height:44px;padding:0 10px;border-radius:12px;border:0;background:var(--surface-2);display:inline-flex;align-items:center;justify-content:center;gap:6px;font-size:15px}
 .ibtn svg{width:22px;height:22px}
 .ibtn svg.st{fill:none;stroke:currentColor;stroke-width:2.2;stroke-linecap:round;stroke-linejoin:round}
@@ -143,22 +150,24 @@ select{width:100%;min-height:46px;padding:0 12px;border-radius:12px;background:v
 <body>
 <main id="editor">
   <div class="head">
-    <h1>跟唸提詞機<span class="ver" id="ver">v1.0.1</span></h1>
-    <p>貼上講稿，開口唸，畫面會跟著你唸到的那句往下走。</p>
+    <div class="titlerow">
+      <h1>超會念提詞機<span class="ver" id="ver">v1.0.2</span></h1>
+      <button class="mic" id="mic" type="button" data-state="unknown"><i class="dot"></i><span id="micTxt">麥克風：偵測中…</span></button>
+    </div>
   </div>
 
   <div class="field">
-    <label class="lbl" for="draft">講稿（目前是範例，直接換成你的內容）</label>
+    <label class="lbl" for="draft">講稿(點擊編輯)</label>
     <textarea id="draft" spellcheck="false"></textarea>
     <div class="meta"><span>共 <b id="nChars">0</b> 字</span><span>約 <b id="nTime">0:00</b>（以每秒 <b id="nSpeed">4</b> 字估算）</span></div>
   </div>
 
   <div class="panel">
     <div class="row">
-      <span class="lbl">目前念到的那句，放在螢幕</span>
+      <span class="lbl">顯示位置</span>
       <div class="anchorrow">
         <div class="phone" id="phoneprev" data-anchor="top" aria-hidden="true"><i></i></div>
-        <div class="seg" role="radiogroup" aria-label="念到的那句的位置">
+        <div class="seg" role="radiogroup" aria-label="顯示位置">
           <input type="radio" name="anchor" id="a-top" value="top"><label for="a-top">上方</label>
           <input type="radio" name="anchor" id="a-center" value="center"><label for="a-center">中間</label>
         </div>
@@ -219,11 +228,12 @@ select{width:100%;min-height:46px;padding:0 12px;border-radius:12px;background:v
 
 <section id="reader" hidden aria-label="提詞畫面">
   <div class="hud">
-    <button class="ibtn" id="back" type="button" aria-label="回到編輯"><svg class="st" viewBox="0 0 24 24"><path d="M15 5l-7 7 7 7"/></svg>編輯</button>
-    <div class="state"><i class="dot" id="dot"></i><span id="stateTxt">語音跟隨</span></div>
-    <button class="ibtn" id="slower" type="button" aria-label="捲動變慢" hidden>−</button>
-    <button class="ibtn" id="faster" type="button" aria-label="捲動變快" hidden>＋</button>
+    <button class="ibtn" id="back" type="button" aria-label="返回主頁"><svg class="st" viewBox="0 0 24 24"><path d="M15 5l-7 7 7 7"/></svg>返回主頁</button>
     <span id="clock">0:00</span>
+    <i class="brk"></i>
+    <div class="state"><i class="dot" id="dot"></i><span id="stateTxt">語音跟隨</span></div>
+    <button class="ibtn" id="slower" type="button" aria-label="捲動變慢" hidden>慢</button>
+    <button class="ibtn" id="faster" type="button" aria-label="捲動變快" hidden>快</button>
   </div>
   <div class="prog"><i id="progBar"></i></div>
   <div class="stagewrap">
@@ -300,13 +310,15 @@ function matchPos(flat,pos,tr){
 
 const $=s=>document.querySelector(s);
 const KEY='teleprompter-v1';
-const SAMPLE='大家好，歡迎來到今天的影片。這支影片，我想跟大家分享三個提升表達力的小技巧。\n第一，先把重點寫成短句，每一句只講一件事。\n第二，念稿的時候眼睛看鏡頭，聲音放慢一點。\n第三，每一段之間停頓一下，讓觀眾有時間消化。\n這個提詞機會跟著你的聲音往下走，你只要自然地說就好。如果念到一半想重來，直接回頭念前一句，畫面也會跟著回去。\n好，我們開始吧。';
+const SAMPLE_BODY='大家好，歡迎來到今天的影片。這支影片，我想跟大家分享三個提升表達力的小技巧。\n第一，先把重點寫成短句，每一句只講一件事。\n第二，念稿的時候眼睛看鏡頭，聲音放慢一點。\n第三，每一段之間停頓一下，讓觀眾有時間消化。\n這個提詞機會跟著你的聲音往下走，你只要自然地說就好。如果念到一半想重來，直接回頭念前一句，畫面也會跟著回去。\n好，我們開始吧。';
+const SAMPLE='以下是範例內容，你可以直接按下開始提詞試試看!\n'+SAMPLE_BODY;
 let S={size:34,anchor:'top',mode:'voice',speed:4,mirror:false,lang:'zh-TW',follow:'normal'};
-let text=SAMPLE;
+let text='';
 try{
   const j=JSON.parse(localStorage.getItem(KEY)||'null');
   if(j){if(typeof j.text==='string'&&j.text.trim())text=j.text;if(j.S)Object.assign(S,j.S);}
 }catch(e){}
+if(text===SAMPLE_BODY||text===SAMPLE)text='';
 const save=()=>{try{localStorage.setItem(KEY,JSON.stringify({text,S}));}catch(e){}};
 
 const draft=$('#draft'),editor=$('#editor'),reader=$('#reader'),stage=$('#stage'),lines=$('#lines');
@@ -318,7 +330,7 @@ const fmt=s=>Math.floor(s/60)+':'+String(s%60).padStart(2,'0');
 
 /* ---------- 編輯頁 ---------- */
 function updateMeta(){
-  const n=norm(draft.value).length;
+  const n=norm(draft.value.trim()?draft.value:SAMPLE).length;
   $('#nChars').textContent=n;
   $('#nTime').textContent=fmt(Math.round(n/S.speed));
 }
@@ -353,8 +365,8 @@ let state='idle',effMode='voice',pos=0,target=0,elapsed=0,cur=-1,last=0,raf=0;
 let userActive=false,moved=false,settleT=0,cdT=0,toastT=0,heard='',lastClock='';
 let spans=[],starts=[],ends=[],flat='';
 
-function build(){
-  const paras=splitParas(text);
+function build(src){
+  const paras=splitParas(src);
   lines.textContent='';spans=[];starts=[];ends=[];flat='';
   for(const para of paras){
     const d=document.createElement('div');d.className='para';
@@ -388,20 +400,63 @@ function layout(){
   const ay=anchorY(),lh=S.size*1.75;
   band.style.top=(ay-lh*0.8)+'px';band.style.height=(lh*1.6)+'px';
   tri.style.top=ay+'px';
+  measure();
+}
+let LM=null,measuredH=0;
+/* 量出每個字所在的行，讓捲動位置能隨念到的字數連續移動，而不是整句整句跳 */
+function measure(){
+  LM=null;
+  if(!spans.length||reader.hidden)return;
+  const base=stage.getBoundingClientRect().top-stage.scrollTop;
+  const lineIdx=new Int32Array(flat.length),ys=[],as=[];
+  const rng=document.createRange(),tol=S.size*0.6;
+  let k=0;
+  for(const sp of spans){
+    const node=sp.firstChild;
+    if(!node)continue;
+    const str=node.nodeValue;
+    for(let i=0;i<str.length;){
+      const ch=String.fromCodePoint(str.codePointAt(i)),len=ch.length;
+      if(/[\p{L}\p{N}]/u.test(ch)){
+        if(k>=flat.length)return;
+        rng.setStart(node,i);rng.setEnd(node,i+len);
+        const r=rng.getBoundingClientRect(),cy=r.top+r.height/2-base;
+        if(!ys.length||Math.abs(cy-ys[ys.length-1])>tol){ys.push(cy);as.push(k);}
+        lineIdx[k]=ys.length-1;
+        k++;
+      }
+      i+=len;
+    }
+  }
+  if(k!==flat.length||!ys.length)return;
+  LM={line:lineIdx,y:ys,a:as,n:k};
+  measuredH=lines.offsetHeight;
+}
+function yAt(p){
+  if(!LM)return null;
+  const k=Math.max(0,Math.min(LM.n-1,Math.floor(p))),L=LM.line[k];
+  const a=LM.a[L],b=L+1<LM.a.length?LM.a[L+1]:LM.n;
+  const y0=LM.y[L],y1=L+1<LM.y.length?LM.y[L+1]:y0;
+  const f=b>a?Math.min(1,Math.max(0,(p-a)/(b-a))):0;
+  return y0+f*(y1-y0);
 }
 function scrollToPos(){
-  const el=spans[cur<0?0:cur];if(!el)return;
-  const rs=el.getClientRects();if(!rs.length)return;
-  const i=cur<0?0:cur,len=ends[i]-starts[i];
-  const f=len>0?Math.min(1,Math.max(0,(pos-starts[i])/len)):0;
-  const a=rs[0],b=rs[rs.length-1];
-  const base=stage.getBoundingClientRect().top-stage.scrollTop;
-  const y0=a.top+a.height/2-base,y1=b.top+b.height/2-base;
-  stage.scrollTop=y0+f*(y1-y0)-anchorY();
+  if(spans.length&&lines.offsetHeight!==measuredH)measure();
+  let y=yAt(pos);
+  if(y===null){
+    const el=spans[cur<0?0:cur];if(!el)return;
+    const rs=el.getClientRects();if(!rs.length)return;
+    const i=cur<0?0:cur,len=ends[i]-starts[i];
+    const f=len>0?Math.min(1,Math.max(0,(pos-starts[i])/len)):0;
+    const a=rs[0],b=rs[rs.length-1];
+    const base=stage.getBoundingClientRect().top-stage.scrollTop;
+    y=(a.top+a.height/2-base)+f*((b.top+b.height/2)-(a.top+a.height/2));
+  }
+  stage.scrollTop=y-anchorY();
 }
-function toast(msg){
+function toast(msg,ms){
   toastEl.textContent=msg;toastEl.hidden=false;
-  clearTimeout(toastT);toastT=setTimeout(()=>{toastEl.hidden=true;},4200);
+  clearTimeout(toastT);toastT=setTimeout(()=>{toastEl.hidden=true;},ms||4200);
 }
 function setMain(){
   const on=state==='running'||state==='countdown';
@@ -419,6 +474,41 @@ function paintState(){
   const auto=effMode==='auto'&&state!=='idle';
   $('#slower').hidden=!auto;$('#faster').hidden=!auto;
 }
+
+/* ---------- 麥克風權限偵測 ---------- */
+const micBtn=$('#mic'),micTxt=$('#micTxt');
+let embedded=false;
+try{embedded=window.top!==window.self;}catch(e){embedded=true;}
+function paintMic(state){
+  const SR=window.SpeechRecognition||window.webkitSpeechRecognition;
+  let txt;
+  if(!SR){state='nosr';txt='此瀏覽器不支援語音辨識';}
+  else if(state==='granted'){txt='麥克風：已允許';}
+  else if(embedded){state='embedded';txt='麥克風：此頁面無法使用';}
+  else if(state==='denied'){txt='麥克風：已封鎖';}
+  else if(state==='prompt'){txt='麥克風：尚未允許（點此授權）';}
+  else{txt='麥克風：點此檢查';}
+  micBtn.dataset.state=state;micTxt.textContent=txt;
+}
+async function checkMic(){
+  try{
+    const st=await navigator.permissions.query({name:'microphone'});
+    paintMic(st.state);
+    st.onchange=()=>paintMic(st.state);
+  }catch(e){paintMic('unknown');}
+}
+micBtn.addEventListener('click',async()=>{
+  const st=micBtn.dataset.state;
+  if(st==='granted'||st==='nosr')return;
+  try{
+    const stream=await navigator.mediaDevices.getUserMedia({audio:true});
+    stream.getTracks().forEach(t=>t.stop());
+    paintMic('granted');
+  }catch(e){
+    paintMic(e&&(e.name==='NotAllowedError'||e.name==='SecurityError')?'denied':'unknown');
+  }
+});
+document.addEventListener('visibilitychange',()=>{if(!document.hidden)checkMic();});
 
 /* ---------- 語音跟隨 ---------- */
 let rec=null;
@@ -507,9 +597,9 @@ function runCountdown(n,done){
   },1000);
 }
 function start(){
-  text=draft.value;save();
-  build();
-  if(!flat.length){draft.placeholder='先貼上講稿再開始';draft.focus();return;}
+  text=draft.value.trim()?draft.value:'';save();
+  build(text||SAMPLE);
+  if(!flat.length){draft.focus();return;}
   effMode=S.mode;heard='';
   editor.hidden=true;reader.hidden=false;
   pos=target=spoken=0;elapsed=0;lastClock='';cur=-1;
@@ -539,7 +629,7 @@ function restart(){
   setMain();paintState();
 }
 function setSize(v){S.size=Math.max(22,Math.min(64,v));save();syncControls();layout();}
-function setSpeed(v){S.speed=Math.max(1,Math.min(12,v));save();syncControls();paintState();}
+function setSpeed(v){S.speed=Math.max(1,Math.min(12,v));save();syncControls();paintState();toast('捲動速度　'+S.speed+' 字/秒',1400);}
 
 $('#start').addEventListener('click',start);
 $('#back').addEventListener('click',exit);
@@ -547,8 +637,8 @@ mainBtn.addEventListener('click',toggle);
 $('#restart').addEventListener('click',restart);
 $('#bigger').addEventListener('click',()=>setSize(S.size+2));
 $('#smaller').addEventListener('click',()=>setSize(S.size-2));
-$('#slower').addEventListener('click',()=>setSpeed(S.speed-0.5));
-$('#faster').addEventListener('click',()=>setSpeed(S.speed+0.5));
+$('#slower').addEventListener('click',()=>setSpeed(S.speed-1));
+$('#faster').addEventListener('click',()=>setSpeed(S.speed+1));
 $('#anchorBtn').addEventListener('click',()=>{S.anchor=S.anchor==='top'?'center':'top';save();syncControls();layout();});
 
 /* 手動滑動：停手後，把念到的位置改成目前停在標記線上的那句 */
@@ -585,8 +675,10 @@ addEventListener('keydown',e=>{
 });
 document.addEventListener('visibilitychange',()=>{if(document.hidden&&state==='running')toggle();});
 
-draft.value=text;
+draft.value=text;draft.placeholder=SAMPLE;
 syncControls();
+checkMic();
+if(document.fonts&&document.fonts.ready)document.fonts.ready.then(()=>{if(!reader.hidden)layout();});
 })();
 </script>
 </body>
