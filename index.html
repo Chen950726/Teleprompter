@@ -51,6 +51,7 @@ button:focus-visible,select:focus-visible,textarea:focus-visible,input[type=rang
 #editor{max-width:560px;margin:0 auto;display:flex;flex-direction:column;gap:20px}
 .head h1{margin:0;font-size:26px;line-height:1.2;font-weight:700;letter-spacing:.02em}
 .head p{margin:6px 0 0;color:var(--fg-dim);font-size:15px}
+.ver{margin-left:10px;padding:2px 9px;border:1px solid var(--line);border-radius:999px;font-family:var(--font-mono);font-size:12px;font-weight:500;letter-spacing:0;color:var(--fg-dim);vertical-align:middle}
 .field{display:flex;flex-direction:column;gap:8px}
 .lbl{font-size:13px;letter-spacing:.08em;color:var(--fg-dim);font-weight:500}
 #draft{
@@ -122,7 +123,7 @@ select{width:100%;min-height:46px;padding:0 12px;border-radius:12px;background:v
 #lines{font-size:var(--fs);line-height:1.75;font-weight:500;overflow-wrap:anywhere}
 #lines.mirror{transform:scaleX(-1)}
 .para{margin:0 0 .8em}
-.p{color:var(--text-next);transition:color .25s;border-radius:.2em;-webkit-box-decoration-break:clone;box-decoration-break:clone}
+.p{color:var(--text-next);transition:color .1s;border-radius:.2em;-webkit-box-decoration-break:clone;box-decoration-break:clone}
 .p.done{color:var(--text-done)}
 .p.now{color:var(--text-now);background:var(--now-bg)}
 .rbar{
@@ -142,7 +143,7 @@ select{width:100%;min-height:46px;padding:0 12px;border-radius:12px;background:v
 <body>
 <main id="editor">
   <div class="head">
-    <h1>跟唸提詞機</h1>
+    <h1>跟唸提詞機<span class="ver" id="ver">v1.0.1</span></h1>
     <p>貼上講稿，開口唸，畫面會跟著你唸到的那句往下走。</p>
   </div>
 
@@ -179,6 +180,16 @@ select{width:100%;min-height:46px;padding:0 12px;border-radius:12px;background:v
         <option value="en-US">English (US)</option>
         <option value="ja-JP">日本語</option>
       </select>
+    </div>
+
+    <div class="row" id="followrow">
+      <span class="lbl">跟隨靈敏度</span>
+      <div class="seg" role="radiogroup" aria-label="跟隨靈敏度">
+        <input type="radio" name="follow" id="f-steady" value="steady"><label for="f-steady">穩定</label>
+        <input type="radio" name="follow" id="f-normal" value="normal"><label for="f-normal">標準</label>
+        <input type="radio" name="follow" id="f-fast" value="fast"><label for="f-fast">積極</label>
+      </div>
+      <p class="note">積極會讓畫面比你的聲音早一點捲動，用來補償手機語音辨識本身的延遲。</p>
     </div>
 
     <div class="row" id="speedrow" hidden>
@@ -257,23 +268,32 @@ function splitParas(t){
     return out;
   });
 }
-/* 把辨識到的句尾，和講稿目前位置附近比對；回傳新的字元位置，找不到就回傳 -1 */
+/* 把辨識到的句尾，和講稿目前位置附近做容錯比對（容忍漏字、多字、同音錯字）；回傳新的字元位置，找不到就回傳 -1 */
 function matchPos(flat,pos,tr){
   const t=norm(tr);
   if(t.length<3)return -1;
-  const L=Math.min(t.length,10),tail=t.slice(-L);
-  const lo=Math.max(L,Math.floor(pos)-40),hi=Math.min(flat.length,Math.floor(pos)+90);
-  let best=-1,bs=-1,bm=0;
-  for(let e=lo;e<=hi;e++){
-    let m=0;
-    for(let k=0;k<L;k++)if(flat[e-L+k]===tail[k])m++;
-    const sc=m/L-Math.abs(e-pos)/1500;
-    if(sc>bs){bs=sc;best=e;bm=m;}
+  const L=Math.min(t.length,8),tail=t.slice(-L);
+  const lo=Math.max(0,Math.floor(pos)-L-40),hi=Math.min(flat.length,Math.floor(pos)+90);
+  const W=flat.slice(lo,hi),n=W.length;
+  if(n<L-2)return -1;
+  let prev=new Array(n+1).fill(0);
+  for(let i=1;i<=L;i++){
+    const cur=new Array(n+1);cur[0]=i;
+    for(let j=1;j<=n;j++){
+      const c=tail[i-1]===W[j-1]?0:1;
+      cur[j]=Math.min(prev[j-1]+c,prev[j]+1,cur[j-1]+1);
+    }
+    prev=cur;
+  }
+  let best=-1,bs=1e9,bd=0;
+  for(let j=1;j<=n;j++){
+    const e=lo+j,d=prev[j],sc=d+Math.abs(e-pos)*0.004;
+    if(sc<bs){bs=sc;best=e;bd=d;}
   }
   if(best<0)return -1;
-  const r=bm/L;
-  if(bm<Math.min(L,4)||r<0.6)return -1;
-  if(best<pos-3&&r<0.8)return -1;
+  const maxD=L<=4?0:Math.floor(L*0.3);
+  if(bd>maxD)return -1;
+  if(best<pos-3&&bd>Math.floor(L*0.15))return -1;
   return best;
 }
 //#core-end
@@ -281,7 +301,7 @@ function matchPos(flat,pos,tr){
 const $=s=>document.querySelector(s);
 const KEY='teleprompter-v1';
 const SAMPLE='大家好，歡迎來到今天的影片。這支影片，我想跟大家分享三個提升表達力的小技巧。\n第一，先把重點寫成短句，每一句只講一件事。\n第二，念稿的時候眼睛看鏡頭，聲音放慢一點。\n第三，每一段之間停頓一下，讓觀眾有時間消化。\n這個提詞機會跟著你的聲音往下走，你只要自然地說就好。如果念到一半想重來，直接回頭念前一句，畫面也會跟著回去。\n好，我們開始吧。';
-let S={size:34,anchor:'top',mode:'voice',speed:4,mirror:false,lang:'zh-TW'};
+let S={size:34,anchor:'top',mode:'voice',speed:4,mirror:false,lang:'zh-TW',follow:'normal'};
 let text=SAMPLE;
 try{
   const j=JSON.parse(localStorage.getItem(KEY)||'null');
@@ -310,6 +330,7 @@ function syncControls(){
   $('#phoneprev').dataset.anchor=S.anchor;
   $('#speedrow').hidden=S.mode!=='auto';
   $('#langrow').hidden=S.mode!=='voice';
+  $('#followrow').hidden=S.mode!=='voice';
   $('#nSpeed').textContent=S.speed;
   $('#anchorBtn').textContent=S.anchor==='top'?'上方':'中間';
   document.documentElement.style.setProperty('--fs',S.size+'px');
@@ -401,9 +422,16 @@ function paintState(){
 
 /* ---------- 語音跟隨 ---------- */
 let rec=null;
+const PROFILES={steady:{lead:0,k:9},normal:{lead:3,k:16},fast:{lead:6,k:24}};
+let spoken=0;
 function follow(tr){
-  const p=matchPos(flat,target,tr);
-  if(p>=0)target=p;
+  const p=matchPos(flat,spoken,tr);
+  if(p<0)return;
+  if(p<spoken&&spoken-p<=4)return;
+  spoken=p;
+  const unit=S.lang==='en-US'?3:1;
+  const prof=PROFILES[S.follow]||PROFILES.normal;
+  target=Math.min(flat.length,p+prof.lead*unit);
 }
 function startRec(){
   const SR=window.SpeechRecognition||window.webkitSpeechRecognition;
@@ -451,12 +479,15 @@ function frame(t){
     elapsed+=dt;
     if(effMode==='auto')target=Math.min(flat.length,target+S.speed*dt);
   }
-  pos+=(target-pos)*Math.min(1,dt*(effMode==='auto'?14:6));
+  const prof=PROFILES[S.follow]||PROFILES.normal;
+  const k=effMode==='auto'?14:(Math.abs(target-pos)>6?prof.k*1.5:prof.k);
+  pos+=(target-pos)*Math.min(1,dt*k);
   const i=phraseAt(pos);
   if(i!==cur)markCurrent(i);
   if(!userActive)scrollToPos();
   hud();
-  if(state==='running'&&target>=flat.length-0.01&&pos>=flat.length-0.6)finish();
+  const reached=effMode==='voice'?spoken>=flat.length-1:target>=flat.length-0.01;
+  if(state==='running'&&reached&&pos>=flat.length-0.6)finish();
 }
 function finish(){
   state='done';stopRec();setMain();paintState();
@@ -481,7 +512,7 @@ function start(){
   if(!flat.length){draft.placeholder='先貼上講稿再開始';draft.focus();return;}
   effMode=S.mode;heard='';
   editor.hidden=true;reader.hidden=false;
-  pos=target=0;elapsed=0;lastClock='';cur=-1;
+  pos=target=spoken=0;elapsed=0;lastClock='';cur=-1;
   markCurrent(0);layout();stage.scrollTop=0;
   state='countdown';setMain();
   if(effMode==='voice')startRec();
@@ -503,7 +534,7 @@ function toggle(){
 }
 function restart(){
   endCountdown();stopRec();
-  pos=target=0;elapsed=0;state='running';
+  pos=target=spoken=0;elapsed=0;state='running';
   if(effMode==='voice')startRec();
   setMain();paintState();
 }
@@ -532,7 +563,7 @@ function settle(){
     const rs=spans[k].getClientRects();
     if(rs.length&&rs[rs.length-1].bottom>=ay)break;
   }
-  target=pos=starts[idx];
+  target=pos=spoken=starts[idx];
 }
 function bump(){userActive=true;clearTimeout(settleT);settleT=setTimeout(settle,700);}
 ['touchstart','touchmove','touchend','wheel'].forEach(n=>stage.addEventListener(n,bump,{passive:true}));
@@ -543,7 +574,7 @@ stage.addEventListener('click',e=>{
   const sp=e.target.closest?e.target.closest('.p'):null;
   if(!sp)return;
   clearTimeout(settleT);userActive=false;moved=false;
-  target=starts[+sp.dataset.i];
+  spoken=target=starts[+sp.dataset.i];
   if(state==='done'){state='running';if(effMode==='voice')startRec();setMain();paintState();}
 });
 addEventListener('resize',()=>{if(!reader.hidden)layout();});
